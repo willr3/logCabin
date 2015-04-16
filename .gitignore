@@ -10,3 +10,19 @@
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+# Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm
+*.iml
+
+## Directory-based project format:
+.idea/
+
+
+# Ignore Gradle / Maven / build files
+.gradle/
+gradle/
+build/
+.m2
+
+# Ignore Node fiels
+node_modules

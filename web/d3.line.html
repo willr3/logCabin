@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>d3-line</title>
+  <script src="./defiant-latest.min.js"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/d3/3.3.13/d3.js"></script>
+  <script src="http://d3js.org/colorbrewer.v1.min.js"></script>
+  <link rel="stylesheet" href="static/bundle.css">
+  <style>
+    axis path,
+    .axis line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+
+    .x.axis path {
+      display: none;
+    }
+    .line {
+      fill: none;
+      stroke: #000;
+      stroke-width: 1.5px;
+      shape-rendering: crispEdges;
+
+    }
+    svg {
+      border: 1px solid #d8d8d8;
+    }
+  </style>
+</head>
+<body>
+  <script>
+
+    var m = [20, 20, 30, 20],
+    w = 960 - m[1] - m[3],
+    h = 200 - m[0] - m[2];
+
+    function getValue(path,obj){
+
+      var startIdx=-1,endIdx=0,target=obj;
+      do {
+        var step = 1;
+        if( path.charAt(startIdx+1) == "'" ){
+          endIdx = path.indexOf("'",startIdx+2);
+          step = 2;
+        } else if ( path.charAt(startIdx+2) == '"' ) {
+          endIdx = path.indexOf('"',startIdx+2);
+          step = 2;
+        }else{
+          endIdx = path.indexOf(".",startIdx+1);
+        }
+        if(endIdx < startIdx || endIdx < 0){
+          endIdx = path.length;
+        }
+        var key = path.substring(startIdx+step,endIdx);
+        if ( target.hasOwnProperty(key) ) {
+          target = target[key];
+        }else {
+          return null;
+        }
+        startIdx=endIdx;
+      } while ( (startIdx = path.indexOf(".",startIdx)) > -1 );
+      return target;
+    }
+
+
+    var graphs = {
+      "heap" : {
+        "heap.size" : "size" ,
+        "heap.pregc" : "before gc" ,
+        "heap.postgc" : "after gc" ,
+      } ,
+      "PSYoungGen" : {
+        "region.PSYoungGen.size" : "size" ,
+        "region.PSYoungGen.pregc" : "before gc" ,
+        "region.PSYoungGen.postgc" : "after gc" ,
+      } ,
+      // "ParOldGen" : {
+      //   "region.ParOldGen.size" : "size" ,
+      //   "region.ParOldGen.pregc" : "before gc" ,
+      //   "region.ParOldGen.postgc" : "after gc" ,
+      // } ,
+      // "Metaspace" : {
+      //   "region.Metaspace.size" : "size" ,
+      //   "region.Metaspace.pregc" : "before gc" ,
+      //   "region.Metaspace.postgc" : "after gc" ,
+      // } ,
+      "Tenuring" : {
+        "tenureCount" : "tenure count"
+      },
+      "String_SimpleString" : {
+        "tenured.'java.lang.String'" : "String",
+        "tenured.'org.hornetq.api.core.SimpleString'" : "SimpleString"
+      }
+
+    }
+
+    var svgs = {};
+    d3.keys(graphs).forEach(function(key){
+      svgs[key] = d3.select("body")
+        .append("svg")
+          .attr("id",key)
+          .attr("width", w + m[1] + m[3])
+          .attr("height", h + m[0] + m[2])
+          .append("g")
+            .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+    })
+
+    var graphIt = function(color){
+
+      return function(error,data){
+        if(error){
+          console.log(error)
+          return;
+        }
+
+        var start = Date.now();
+        var snap = Defiant.getSnapshot(data);
+
+        start = Date.now();
+        var jd = JSON.search(snap, './*/heap/*')
+
+        data.forEach(function(gc,idx){
+
+          //adjust the timestamp
+          var d = new Date(gc.timestamp);
+          var tz = gc.timestamp.match(/(\d{2})(\d{2})$/);
+          var tzShift = parseInt(tz[1])*60 + parseInt(tz[2]);
+
+          d.setMinutes(d.getMinutes() + (d.getTimezoneOffset()-tzShift ) );
+
+          gc.timestamp = d;
+
+          //adjust the region from [{name: "", ...}, ...] to { name : {name: "", ...}, ... }
+          // not needed now that region is saved as a map in original json
+          // var nest = d3.nest()
+          //   .key( function(d){ return d.name } )
+          //   .rollup(function(a){
+          //     return a[0]
+          //   })
+          //   .map(gc.region)
+          //
+          // gc.region = nest;
+
+          gc.tenureCount = d3.sum( d3.values(gc.tenured),function(d){return d})
+        })
+
+
+
+        var xScale = d3.time.scale();
+        xScale.domain([
+            d3.min(data,function(d){return +d.elapsed;}),
+            d3.max(data,function(d){return +d.elapsed;})
+          ])
+          .range([0,w])
+
+        var xAxis = d3.svg.axis()
+          .scale(xScale)
+          .orient("bottom");
+
+
+        addLine = function(selector,data,yScale){
+          var line = d3.svg.line()
+          .interpolate("basis")
+          .defined(function(gc){
+            return getValue(selector,gc) != null;
+          })
+          .x(function(gc){ return xScale( +gc.elapsed ); })
+          .y(function(gc){
+            var v   = getValue(selector,gc);
+            var ret = yScale( 0+v );
+            return   ret;
+          })
+          return line(data);
+        }
+
+
+
+        d3.keys(graphs).forEach(function(graphKey){
+          var s = svgs[graphKey];
+
+          var graphObject = graphs[graphKey];
+
+
+          var yScaleKMG = d3.scale.linear();
+          if(graphKey == "String_SimpleString" ){
+            yScaleKMG = d3.scale.log();
+          }
+          //var yScaleKMG = d3.scale.log();
+
+          yScaleKMG.domain([
+            d3.min(data,function(gc){
+              return d3.min(d3.keys(graphObject),function(r){
+
+                var rtrn = getValue(r,gc)
+
+                return rtrn;
+              })
+            }),
+            d3.max(data,function(gc){
+              return d3.max(d3.keys(graphObject),function(r){
+
+                return getValue(r,gc);
+              })
+            })])
+            .range([h,0])
+
+          console.log("yScaleKMG domain=["+yScaleKMG.domain()+"] range=["+yScaleKMG.range()+"]")
+
+          var yAxis = d3.svg.axis()
+            .scale(yScaleKMG)
+            .orient("left");
+
+
+
+            // s.append("g")
+            //   .attr("class", "x axis")
+            //   .attr("transform", "translate(0," + h + ")")
+            //   .call(xAxis);
+            //
+            // s.append("g")
+            // .attr("class", "y axis")
+            // .call(yAxis)
+            //   .append("text")
+            //   .attr("transform", "rotate(-90)")
+            //   .attr("y", 6)
+            //   .attr("dy", ".71em")
+            //   .style("text-anchor", "end")
+            //   .text(graphKey);
+
+
+
+          d3.keys(graphObject).forEach(function(lineKey,idx){
+            s.append("g")
+            .attr("id","g-"+lineKey)
+              .append("path")
+              .attr("class","line")
+              .style("stroke", color(idx) )
+              .attr("d",addLine(lineKey,data,yScaleKMG));
+          })
+
+        })
+
+      }
+
+
+
+    }
+
+
+    var color = function(v){
+      return colorbrewer.Blues[3][v];
+    }
+    var light = function(v){
+      return colorbrewer.Reds[3][v];
+    }
+
+
+    d3.json("/specWork/SimpleString/194/194M.gclog.json",graphIt(color))
+    d3.json("/specWork/SimpleString/194/194N.gclog.json",graphIt(light))
+  </script>
+</body>
+</html>

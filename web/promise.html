@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>P</title>
+  <!--script src="./jsonpath.js"></script-->
+  <script src="https://cdn.jsdelivr.net/bluebird/latest/bluebird.min.js"></script>
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+  <script src="http://d3js.org/colorbrewer.v1.min.js"></script>
+  <link rel="stylesheet" href="static/bundle.css">
+  <style>
+  .axis path,
+  .axis line {
+    fill: none;
+    shape-rendering: crispEdges;
+  }
+  .axis line {
+    stroke : #666;
+  }
+  .axis text {
+    fill: gray;
+  }
+  .axis.y2 text {
+    fill: #d8d8d8;
+  }
+  .x.axis path {
+    display: none;
+  }
+  .y.axis path {
+    display: none;
+  }
+  .line {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1.5px;
+    /* shape-rendering: crispEdges; */
+
+  }
+  svg {
+    border: 1px solid #d8d8d8;
+  }
+  </style>
+</head>
+<body>
+  <script>
+    var m = [/*top*/ 20, /*left*/ 20, /*bottom*/ 30, /*right*/ 60],
+      w = 1227 - m[1] - m[3],
+      h = 100 - m[0] - m[2];
+    var datasets = [
+      {
+        name    : "194M",
+        gclog   : "/specWork/SimpleString/194/194M.gclog.json",
+        fabanlog: "/specWork/SimpleString/194/log.194M.xml.json",
+
+      } ,
+      {
+        name    : "194N",
+        gclog   : "/specWork/SimpleString/194/194N.gclog.json",
+        fabanlog: "/specWork/SimpleString/194/log.194N.xml.json"
+      }
+    ];
+    var files = [
+      {
+        url: "/specWork/SimpleString/194/194M.gclog.json" ,
+        name : "194M"
+      },
+      {
+        url : "/specWork/SimpleString/194/194N.gclog.json",
+        name : "194N"
+      }
+    ];
+    var graphs = {
+      "heap" : {
+        "series" : {
+          //"heap.size" : "size" ,
+          "heap.pregc" : "before gc" ,
+          "heap.postgc" : "after gc" ,
+        }
+      } ,
+      "PSYoungGen" : {
+        "series" : {
+          //"region.PSYoungGen.size" : "size" ,
+          "region.PSYoungGen.pregc" : "before gc" ,
+          "region.PSYoungGen.postgc" : "after gc" ,
+        }
+      } ,
+      "ParOldGen" : {
+        "series" : {
+          //"region.ParOldGen.size" : "size" ,
+          "region.ParOldGen.pregc" : "before gc" ,
+          "region.ParOldGen.postgc" : "after gc" ,
+        }
+      } ,
+      "Metaspace" : {
+        "series" : {
+          "region.Metaspace.size" : "size" ,
+          "region.Metaspace.pregc" : "before gc" ,
+          "region.Metaspace.postgc" : "after gc" ,
+        }
+      } ,
+      "Tenuring" : {
+        "series" : {
+          "tenureCount" : "tenure count"
+        }
+      },
+      // "String_SimpleString" : {
+      //   "series" : {
+      //     "tenured.'java.lang.String'" : "String",
+      //     "tenured.'org.hornetq.api.core.SimpleString'" : "SimpleString"
+      //   }
+      // }
+    };
+    var color = function(v){
+      return colorbrewer.Blues[5][4-v];
+    }
+    var light = function(v){
+      return colorbrewer.Reds[5][4-v];
+    }
+    function crossDomain(obj,fromAcessor,toAccessor,data){
+      var currentDomain = fromAccessor(obj);
+      var idx = binarySearch(data,currentDomain,fromAccessor);
+      var idxCurrentDomain = fromAccessor( data[idx] );
+      var idxTargetDomain = toAccessor( data[idx] );
+      if(currentDomain > idxCurrentDomain){
+        if(idx == data.length-1){//approximate slope from previous value
+          var prevCurrentDomain = fromAccessor( data[idx-1] );
+          var prevTargetDomain = toAccessor( data[idx-1] );
+
+          var slope = (idxTargetDomain - prevTargetDomain) / (idxCurrentDomain - prevCurrentDomain);
+
+          var guess = idxTargetDomain + slope * (currentDomain - idxTargetDomain);
+
+          console.log("currentDomain = "+currentDomain+" > idxCurrentDomain = "+idxCurrentDomain+" idxTargetDomain = "+idxTargetDomain);
+          console.log("idx = "+idx+" data.length="+data.length);
+          console.log("prevCD = " + prevCurrentDomain+" prevTD="+ prevTargetDomain);
+          console.log("slope = "+slope+" guess = "+guess);
+
+        }else{
+
+          var nextCurrentDomain = fromAccessor( data[idx+1] );
+          var nextTargetDomain = toAccessor( data[idx+1] );
+
+          var slope = (nextTargetDomain - idxTargetDomain) / (nextCurrentDomain - idxCurrentDomain);
+
+          var guess = idxTargetDomain + slope * (currentDomain - idxTargetDomain);
+
+          console.log("currentDomain = "+currentDomain+" > idxCurrentDomain = "+idxCurrentDomain+" idxTargetDomain = "+idxTargetDomain);
+          console.log("idx = "+idx+" data.length="+data.length);
+          console.log("nextCD = " + nextCurrentDomain+" target="+ nextTargetDomain);
+          console.log("slope = "+slope+" guess = "+guess);
+        }
+      }else if (currentDomain < idxCurrentDomain){
+
+      }
+    }
+    function binarySearch(data,desired,accessor){
+      start = 0;
+      stop = data.length-1;
+      var idx = 0
+      while(stop >= stop){
+
+        idx = start + Math.floor( (stop-start)/2 )
+
+        var value = accessor(data[idx]);
+        if( value == desired){
+          return idx;
+        }else {
+          if (start >= stop){
+            return idx;
+          }
+          if( value > desired){
+            stop = idx-1;
+
+          }else{
+            start = idx+1;
+          }
+        }
+      }
+
+    }
+    function plotLine(selector,data,yScale,xScale){
+      var line = d3.svg.line()
+        .interpolate("basis")
+        .defined(function(gc){
+          return getValue(selector,gc) != null;
+        })
+        .x(function(gc){ return xScale(+gc.elapsed); })
+        .y(function(gc){
+          var v = getValue(selector,gc);
+          var ret = yScale(0+v);
+          return ret;
+        })
+        return line(data);
+    }
+
+    function getValue(path,obj){
+
+      var startIdx=-1,endIdx=0,target=obj;
+      do {
+        var step = 1;
+        if( path.charAt(startIdx+1) == "'" ){
+          endIdx = path.indexOf("'",startIdx+2);
+          step = 2;
+        } else if ( path.charAt(startIdx+2) == '"' ) {
+          endIdx = path.indexOf('"',startIdx+2);
+          step = 2;
+        }else{
+          endIdx = path.indexOf(".",startIdx+1);
+        }
+        if(endIdx < startIdx || endIdx < 0){
+          endIdx = path.length;
+        }
+        var key = path.substring(startIdx+step,endIdx);
+        if ( target.hasOwnProperty(key) ) {
+          target = target[key];
+        }else {
+          return null;
+        }
+        startIdx=endIdx;
+      } while ( (startIdx = path.indexOf(".",startIdx)) > -1 );
+      return target;
+    }
+
+    P.resolve([
+      {
+        "log"  : "/specWork/SimpleString/194/log.194M.xml.json",
+        "name" : "194M"
+      },
+      {
+        "log"  : "/specWork/SimpleString/194/log.194N.xml.json",
+        "name" : "194N"
+      }
+      ]).map(function(entry){
+        return new Promise(function(resolve,reject){
+          d3.json(entry.log,function(e,v){
+            if(e){ v = []; }
+            var data = {}
+            data.data = v;
+            data.name = entry.name;
+            resolve(data);
+          })
+        }).catch(function(e){console.log(e)})
+    }).then(function(allData){
+      var result = d3.nest()
+        .key(function(v){return v.name})
+        .rollup(function(arry){return arry[0].data})
+        .map(allData);
+      return result;
+    }).then(function(nested){
+      d3.keys(nested).forEach(function(key){
+        var arry = nested[key];
+        arry.forEach(function(rec){
+          switch(rec.message){
+            case "Ramp up started":
+              console.log("ramp started "+rec.date);
+              break;
+            case "Ramp up completed":
+              console.log("ramp completed "+rec.date);
+              break;
+            case "Steady state completed":
+              console.log("steady complete "+rec.date);
+              break;
+            case "Ramp down completed":
+              console.log("down complete "+rec.date);
+              break;
+          }
+        })
+      })
+      return nested;
+    }).then(function(logData){
+      return P.resolve(files).map(function(entry){
+        return new Promise(function(resolve,reject){
+          d3.json(entry.url,function(e,v){
+            if(e){ v = []; }
+            var data = {}
+            data.data=v;
+            data.name = entry.name;
+            resolve(data);
+          })
+        }).catch(function(e){console.log(e)})
+      }).then(function(gcData){
+        console.log(gcData);
+        return {
+          logData : logData,
+          gcData : gcData
+        }
+      })
+    }).then(function(allData,foo){
+      console.log("nesting allData");
+      console.log(allData);
+      console.log("nesting foo");
+      console.log(foo);
+      var result = d3.nest()
+        .key(function(v){return v.name})
+        .rollup(function(arry){return arry[0].data})
+        .map(allData.gcData);
+      allData.gcData = result;
+      return allData;
+    }).then(function(allData){
+
+
+      console.log(allData);
+
+      //Adjust the data from serialized to inflated JSON
+      var xDomain = [Number.MAX_VALUE,Number.MIN_VALUE];
+
+      var nested = allData.gcData;
+
+      //calculate the xDomain and adjust / create any data types / values for the datasets
+      var tenuredKeys = {};
+      var tenuredSums = {};
+      d3.keys(nested).forEach(function(key){
+        var arry = nested[key];
+        var extent = d3.extent(arry,function(gc){return gc.elapsed});
+        xDomain[0]=Math.min(xDomain[0],extent[0]);
+        xDomain[1]=Math.max(xDomain[1],extent[1]);
+        arry.forEach(function(gc){
+          var d = new Date(gc.timestamp);
+          var tz = gc.timestamp.match(/(\d{2})(\d{2})$/);
+          // var tzShift = parseInt(tz[1])*60 + parseInt(tz[2]);
+          //
+          // d.setMinutes(d.getMinutes() + (d.getTimezoneOffset()-tzShift ) );
+
+          gc.timestamp = d;
+
+          //Add custom properties
+          gc.tenureCount = d3.sum( d3.values(gc.tenured))
+          d3.keys(gc.tenured).forEach(function(tk){
+            tenuredKeys[tk]= tenuredKeys[tk] ? tenuredKeys[tk]+1 : 1;
+            tenuredSums[tk]= tenuredSums[tk] ? tenuredSums[tk]+gc.tenured[tk] : gc.tenured[tk];
+          })
+
+        })//for each gc entry
+      })//for each dataset
+
+
+      // d3.values(nested).forEach(function(arry){
+      //   //use tme milliseconds
+      //   var mil = new Date(1427214407928);
+      //   var str = new Date("2015-03-24T11:26:47");
+      //   console.log("mil = "+mil+" str = "+str+" == "+(mil==str))
+      //   var idx = binarySearch(arry,mil,function(gc){return gc.timestamp});
+      //
+      //   var tx = arry[idx].timestamp;
+      //   console.log(mil+" "+mil.getMilliseconds()+"  ->  "+tx+" "+tx.getMilliseconds());
+      //   console.log("mil == tx ? "+(mil == tx));
+      //   console.log("mil > tx ? "+(mil > tx));
+      //   console.log("mil < tx ? "+(mil < tx));
+      //   console.log(mil-tx);
+      //   var shift = 0;
+      //   if(mil>tx){
+      //     console.log("arry["+(idx+1)+"].timestamp = "+(arry[idx+1].timestamp));
+      //     shift = arry[idx+1].timestamp - tx;
+      //   }else if (mil < tx){
+      //     console.log("arry["+(idx-1)+"].timestamp = "+(arry[idx-1].timestamp));
+      //     shift = tx - arry[idx-1].timestamp;
+      //   }
+      //   console.log("shift = "+shift);
+      //
+      //   console.log("idx = "+idx);
+      //
+      //
+      //   console.log(arry[idx]);
+      //
+      // })
+
+
+
+      // Calculate the ydomain for each of the graphs in graphs = {}
+      //
+      var st = Date.now();
+      d3.values(graphs).forEach(function(graphObject){
+          var go = d3.values(nested).map(function(arry){
+            var ex = arry.map(function(gc){
+              var d = d3.keys(graphObject.series).map(function(seriesName){
+                    return getValue(seriesName,gc);
+                  }).filter(function(v){ return v!=null})
+              //console.log(d);
+              return d;
+            })
+            ex = d3.merge(ex);//.reduce(function(a,b){return a.concat(b)});
+            ex = d3.extent(ex);
+            return ex;
+          })
+          go = d3.extent(d3.merge(go))
+          graphObject.yDomain = go;
+      })
+      var dt = Date.now() - st;
+      console.log("calculated yDomains in "+dt+"ms");
+
+      //render the graphs
+
+      var xScale = d3.scale.linear();
+      xScale.domain(xDomain).range([0,w]).nice();
+
+      var xAxis = d3.svg.axis()
+        .scale(xScale)
+        .orient("bottom")
+        .tickFormat(function(v){
+          var h2 = Math.floor(v/3600);
+          v = v - h2*3600;
+          var m = Math.floor(v/60);
+          v = v - m*60;
+
+          return h2 + ":" + ((m < 10) ? "0" + m : m) + ":" + ((v < 10) ? "0" + v : v);
+        })
+
+      //GC types
+      var types = d3.extent(
+        d3.merge (
+          d3.values(nested).map(function(arry){
+            var ex = arry.map(function(gc){
+              return gc.gctype
+            })
+            return ex;
+          })
+        )
+      )
+      console.log("types = "+types);
+      var ts = d3.select("body")
+        .append("svg")
+        .attr("id","gctype")
+        .attr("width", w + m[1] + m[3])
+        .attr("height", h + m[0] + m[2])
+        .append("g")
+        .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+
+      var tyScale = d3.scale.ordinal()
+        .domain(types)
+        .rangePoints([h-5,0+5]);
+
+      var tyAxis = d3.svg.axis()
+        .scale(tyScale)
+        .orient("left")
+        //.tickFormat(d3.format("s"))
+        .ticks(2)
+
+      ts.append("g")
+        .attr("class","x axis")
+        .attr("transform","translate(0,"+ h+")")
+        .call(xAxis);
+
+      ts.append("g")
+        .attr("class","y axis")
+        .call(tyAxis)
+
+      ts.append("text")
+        //.attr("transform", "rotate(-90)")
+        .attr("transform","translate("+ ( w ) + ", " + (-m[0]) +" )")
+        .attr("y", 6)
+        .attr("dy", ".71em")
+        .style("text-anchor", "end")
+        .text("gctype");
+
+
+      d3.values(nested).forEach(function(arry,nestIdx){
+        arry.forEach(function(gc){
+          ts.append('circle')
+            .attr("cx" , xScale(gc.elapsed) )
+            .attr("cy" , tyScale(gc.gctype) )
+            .attr("r"  , 3 )
+            .attr("stroke",( nestIdx == 0) ? color(0) : light(0))
+            .attr("fill","none")
+        })
+      })
+
+
+      d3.keys(graphs).forEach(function(key){
+        var graphObject = graphs[key];
+
+        var s = d3.select("body")
+        .append("svg")
+        .attr("id",key)
+        .attr("width", w + m[1] + m[3])
+        .attr("height", h + m[0] + m[2])
+        .append("g")
+        .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+
+        var yScale = d3.scale.linear()
+        .domain(graphObject.yDomain)
+        .range([h,0]);
+
+        if(key=="Tenuring"){
+          yScale.domain([0,yScale.domain()[1]/50])
+        }
+
+        var yAxis = d3.svg.axis()
+        .scale(yScale)
+        .orient("left")
+        .tickFormat(d3.format("s"))
+        .ticks(3);
+
+        s.append("g")
+        .attr("class","x axis")
+        .attr("transform","translate(0,"+ h+")")
+        .call(xAxis);
+
+        s.append("g")
+        .attr("class","y axis")
+        .call(yAxis)
+
+        s.append("text")
+          //.attr("transform", "rotate(-90)")
+          .attr("transform","translate("+ ( w ) + ", " + (-m[0]) +" )")
+          .attr("y", 6)
+          .attr("dy", ".71em")
+          .style("text-anchor", "end")
+          .text(key);
+
+        //draw the lines
+        d3.keys(graphObject["series"]).forEach(function(seriesSelector,seriesIdx){
+          d3.entries(nested).forEach(function(dataObject,dataIdx){
+
+            s.append("g")
+            .attr("id","g-"+dataObject.key+"-"+seriesSelector)
+            .append("path")
+            .attr("class","line")
+            .style("stroke",( dataIdx == 0) ? color(seriesIdx) : light(seriesIdx))
+            .attr("d",
+            plotLine(
+              seriesSelector,
+              dataObject.value,yScale,xScale))
+            })
+          })
+
+          //draw the legend
+
+        })
+
+      var barWidth = w / xDomain[1];
+      d3.keys(tenuredKeys).sort(function(a,b){return tenuredSums[b]-tenuredSums[a]}).forEach(function(tenuredClass){
+        // var s = d3.select("body")
+        //   .append("svg")
+        //   .attr("id",tenuredClass)
+        //   .attr("width", w + m[1] + m[3])
+        //   .attr("height", h + m[0] + m[2])
+        //     .append("g")
+        //     .attr("transform", "translate(" + m[3] + "," + m[0] + ")");
+
+        var extent = d3.extent(
+            d3.merge (
+              d3.values(nested).map(function(arry){
+                var ex =
+                    arry.map(function(gc){
+                      return gc.hasOwnProperty("tenured") ? gc.tenured[tenuredClass] : null;
+                    }).filter(function(v){return v!=null && v > 0})
+                //console.log(ex);
+                return ex;
+              })
+            )
+          )
+          extent = [0,d3.quantile(
+            d3.merge (
+              d3.values(nested).map(function(arry){
+                var ex =
+                arry.map(function(gc){
+                  return gc.hasOwnProperty("tenured") ? gc.tenured[tenuredClass] : null;
+                }).filter(function(v){return v!=null && v > 0})
+                //console.log(ex);
+                return ex;
+              })
+            ).sort(), .01)]
+        //extent = [0,2000];
+        //console.log(tenuredClass+" -> "+extent);
+        var s = d3.select("body")
+          .append("svg")
+          .attr("width" , w + m[1] + m[3])
+          .attr("height" ,h + m[0] + m[2])
+            .append("g")
+            .attr("transform","translate(" + m[3] + "," + m[0] + ")");
+
+        s.append("text")
+          //.attr("transform", "rotate(-90)")
+          .attr("transform","translate("+ ( w ) + ", " + (-m[0]) +" )")
+          .attr("y", 6)
+          .attr("dy", ".71em")
+          .style("text-anchor", "end")
+          .text(tenuredClass+" ("+d3.format("s")(tenuredSums[tenuredClass])+")");
+
+        var yScale = d3.scale.linear()
+          .domain([ 0 , extent[1] ])
+          .range([h,0]);
+        var yAxis = d3.svg.axis()
+          .scale(yScale)
+          .orient("left")
+          .tickFormat(d3.format("s"))
+          .ticks(3);
+
+        s.append("g")
+          .attr("class","x axis")
+          .attr("transform","translate(0,"+ h+")")
+          .call(xAxis);
+
+        s.append("g")
+          .attr("class","y axis")
+          .call(yAxis)
+
+          d3.entries(nested).forEach(function(dataObject,dataIdx){
+            dataObject.value.forEach(function(gc){
+              if(gc.hasOwnProperty("tenured") && gc.tenured.hasOwnProperty(tenuredClass)){
+                s.append("rect")
+                  .attr("y" , Math.max( -5, yScale(gc.tenured[tenuredClass]) ) )
+                  .attr("height" , h - Math.max( -5, yScale(gc.tenured[tenuredClass]) ) )
+                  .attr("x" , xScale(+gc.elapsed)-barWidth/2 )
+                  .attr("width", barWidth )
+                  .attr("fill",( dataIdx == 0) ? color(0) : light(0))
+                  .append("title")
+                    .text(gc.tenured[tenuredClass])
+              }
+            })
+          })
+
+
+
+      })
+
+
+
+
+
+    })
+
+
+
+
+  </script>
+</body>

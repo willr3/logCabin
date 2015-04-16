@@ -1,0 +1,49 @@
+{
+  "name" : "logCabin",
+  "version" : "0.0.1",
+  "private" : true,
+  "author" : "wreicher",
+  "main" : "app.js",
+  "dependencies" : {
+    "less" : "~1.5.1",
+    "flux" : "^2.0.0",
+    "keymirror" : "~0.1.0",
+    "object-assign" : "^1.0.0",
+    "react": "^0.13.0",
+    "classnames" : "~1.1.4",
+    "d3" : "3.5.5",
+    "bluebird" : "2.9.24",
+    "colorbrewer" : "0.0.2"
+  },
+  "devDependencies" : {
+    "browserify" : "~2.36.1",
+    "envify" : "^3.0.0",
+    "jest-cli" : "~0.1.17",
+    "reactify" : "^0.15.2",
+    "uglify-js" : "~2.4.15",
+    "watchify" : "^2.1.1",
+    "catw" : "~0.2.0"
+  },
+  "scripts" : {
+    "start": "watchify -o static/bundle.js -v -d .",
+    "//" : {"build": "NODE_ENV=production browserify . | uglifyjs -cm > static/bundle.min.js"},
+    "test": "jest",
+
+    "watch-css": "catw -c 'lessc -' 'source/**/*.less' -o static/bundle.css -v",
+    "watch-js": "watchify app.js -o static/bundle.js -dv",
+    "watch": "npm run watch-css & npm run watch-js",
+    "build-css": "catw -c 'lessc -' 'source/*.less' > static/bundle.css",
+    "build-js": "browserify source/*.js > static/bundle.js",
+    "build": "npm run build-css && npm run build-js"
+
+  },
+  "browserify": {
+    "transform": [
+      ["reactify", {"es7": true}],
+      "envify"
+    ]
+  },
+  "jest": {
+    "rootDir": "./source"
+  }
+}

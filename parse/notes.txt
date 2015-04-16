@@ -1,0 +1,134 @@
+
+
+Parsing is done by checking the text (usually line by line) against a set of rules
+    if the rule matches then
+        if the rule is for a new JSON object
+            evict the current object and start a new one
+        else
+            merge the rules matched data with the current object
+
+
+
+Rules can have settings that control how to merge the data and how to the parser should respond to a match
+
+Value Types :
+    NestLength : treat the length of the value to determine if it is a child , sibling, or elder of the current context
+    Number : treat the value as a number (parse it)
+    Count : the number of times value occurs
+    Sum : the total for all values
+    Key(k) : the value acts as the key for the value of key k
+        if k is not present then ignore that this matched
+    BooleanKey
+    BooleanValue
+    Position : add {value : matcher.start()} instead of {key : value} (this is for fixed width data)
+    String : append the values as a string instead of collecting all occurances
+    List : the default behaviour, accumulate all the values that matched the key
+
+Merge Types : (control how the resulting key:value pairs are merged
+    Entry <- treat the resulting object as an entry in a list rather a collection of keys. requires a groupBy
+    Collection <- each key should be merged individually
+    Extend(x) : the matched key:value pairs are merged into the last value for {x : []} (they extend that entry)
+
+    NewStart : this line should be treated as the start of a new DO
+
+Methods : (related to merge Types but not a strict relationship)
+    Group(x) : the matched key:value pairs are the value for { x : ...}
+    Key(x) : the matched key:value pairs are the value for the value of x { v : { x : v, ...}}
+
+
+Pattern Rules : actions to take either before or after the pattern matches
+
+    LineStart : the pattern starts from the beginning of the line and not where the parent pattern finished
+
+    Repeat : if the pattern matched apply it until it no longer matches
+
+    "These 3 are mutually exclusive"
+    EatMatch : remove the matched subsequence so other patterns cannot use it for matching
+    EatCount : remove a specific number of characters from the (starting with where the Pattern matched) used for fixed width data
+    EatLine : no other patterns should be applied to this line
+
+    Execute(function) : execute a callback that is passed the resulting match JSON, the pattern, and the parent Parser (if one exists)
+
+    PushContext(x) : set the merge target for the next patterns to the value of {x: ...} rather than the root JSONObject
+
+    AvoidContext() : revert to the previous context for this match and subsequent matches
+    PopContext() : revert to the previous context for subsequent matches
+    ClearContext() : rever to the root context for this match and subsequent
+
+
+Sudo ::
+
+    create a new root start ctx
+    for each line
+        for each parser
+            if the parser matches [ 1 ]
+                //context is where the group / key chain starts
+                //target is where the key:value will be merged
+
+                if NewStart
+                    close the root context and create a new root start ctx
+                        close will only have an effect if there is not already a closed one waiting to be emitted
+                do
+
+
+                    //ensure the context contains the Group(x) / Key(x) Path for this match
+                        build an actual Path = ["","",""] in case it is needed for context
+                        get a JSONObject for all but the last key
+                        if Entry then
+                            ensure last key points to JSONArray
+                            add an empty JSONObject to the JSONArray (for merging the match into)
+                            set the target == the empty JSONObject
+                        else if Extend
+                            ensure last key points to JSONArray
+                            get last entry or add an empty JSONObjec to the Array
+                        else
+                            set target = get key or put key
+
+                    set the context for this match to the end of the group(x) / key(x) path
+
+                    build a matchJSON by following all the type rules for each named field
+
+
+                    if Eat.Width
+                        reset the start for pattern
+                    if Eat.Match
+                        reset the start for pattern
+
+                    for each child parser
+                        goto 1 with the context set to matchJSON and start
+
+                    //at this point all the children matches are merged into matchJSON
+                    if Extend(x) current context should point to parent of x
+.                       if context has x get the last and merge the key:value pairs according to their Value Types
+                        if it doesn't have x then set x to be a list with [matchJSON]
+                    else if Entry
+                        the current context is a list, add another entry
+                            //This is the sticky part with JSONObject / JSONArray, they don't support direct conversion without knowing the key
+                            //JSONBuilder needs to track the parent path for the current context so pushContext and only descend 1 level
+                    else //Collection
+.                       merge each key:value with the current context according to the Value Types
+
+                    if Execute
+
+                while ( Repeat and parser matches)
+
+
+
+                if PopContext
+                if ClearContext
+                if SetContext() <- the last group(x) / key(x) or this
+
+                if Eat.Line || line.isEmpty
+                    break the parser loop
+
+
+
+get the matches {key : value}
+
+ensure the return object will have the correct grouping
+
+append the matches to the return object following the correct rules
+
+if repeat, go back to getting teh matches
+
+once doen repeating, try the children attaching to the
