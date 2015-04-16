@@ -14,7 +14,7 @@ import perf.parse.Pattern;
 
 import static org.junit.Assert.*;
 /**
- * Created by wreicher on 3/30/15.
+ * 
  */
 public class JStackFactoryTest {
 
